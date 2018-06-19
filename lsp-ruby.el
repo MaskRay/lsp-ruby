@@ -45,6 +45,23 @@
       (font-lock-ensure)
       (buffer-string))))
 
+;; We have to wait until the language server outputs the following:
+;; "Solargraph is listening PORT=7658 PID=12345\n"
+(defun lsp-ruby--port-fn (proc stderr)
+  (let ((counter 20)
+        (msg ""))
+    (while (and (> counter 0) (string-empty-p msg))
+      (setq msg (with-current-buffer stderr (buffer-string)))
+      (setq counter (1- counter))
+      (sleep-for 0.1))
+    (when (not (string-match-p "PORT=\\([0-9]+\\)" msg))
+      (error "Solgaraph language server did not startup in time."))
+
+    (string-match "PORT=\\([0-9]+\\)" msg)
+    (let ((port (string-to-number (match-string 1 msg))))
+      (message "Solargraph language server is listening at %s" port)
+      port)))
+
 (defun lsp-ruby--initialize-client (client)
   "Initial setup for ruby LSP CLIENT."
   (lsp-provide-marked-string-renderer
@@ -53,10 +70,12 @@
 (lsp-define-tcp-client
  lsp-ruby "ruby"
  lsp-ruby--get-root
- '("solargraph" "socket")
+ ;; Use a random port:
+ '("solargraph" "socket" "-p" "0")
  "127.0.0.1"
  7658
- :initialize 'lsp-ruby--initialize-client)
+ :initialize 'lsp-ruby--initialize-client
+ :port-fn 'lsp-ruby--port-fn)
 
 (lsp-define-stdio-client
  lsp-ruby-mtsmfm "ruby"
